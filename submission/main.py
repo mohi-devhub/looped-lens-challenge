@@ -33,8 +33,7 @@ import questions
 
 MODEL_ID = os.environ["MODEL_ID"]
 
-# Read the last five layer visits in forward order.
-VISITS = [43, 44, 45, 46, 47]
+VISITS = [44]
 TOP = 10  # tokens reported per visit
 QUESTIONS_PER_REQUEST = 25  # one NDIF request runs this many forward passes
 
