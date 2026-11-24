@@ -1,10 +1,13 @@
 # For agents working in this repository
 
+When continuing this entry, start by reading [`notes/PLAN.md`](notes/PLAN.md)
+and [`notes/results.md`](notes/results.md).
+
 This is the Looped Lens Challenge: a competition to build the lens that best
 reads Inkling 2 Mini. You are most likely helping someone enter it.
 [`README.md`](README.md) is the participant's guide and has the rules and the
-file formats. Read it first. This file adds what an agent needs to do the work
-well.
+file formats. Read it before working on the entry. This file adds what an agent
+needs to do the work well.
 
 ## Load the nnsight skill before writing lens code
 
