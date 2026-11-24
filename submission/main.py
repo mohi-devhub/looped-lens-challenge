@@ -19,6 +19,7 @@ import os
 import string
 import time
 import unicodedata
+from itertools import chain
 
 import nnsight
 import torch
@@ -33,9 +34,9 @@ import questions
 
 MODEL_ID = os.environ["MODEL_ID"]
 
-# Read the last five layer visits in forward order.
-VISITS = [43, 44, 45, 46, 47]
+VISITS = [1, 13, 14, 16, 25, 26, 44]
 TOP = 10  # tokens reported per visit
+CANDIDATES = 128  # filtered token IDs available to refill a readout
 QUESTIONS_PER_REQUEST = 25  # one NDIF request runs this many forward passes
 
 assert VISITS == sorted(set(VISITS)) and len(VISITS) <= questions.MAX_LAYERS, VISITS
@@ -54,6 +55,27 @@ def excluded_token_ids(tokenizer):
     return torch.tensor(sorted(excluded), dtype=torch.long)
 
 
+def deduplicated_readouts(tokenizer, per_visit):
+    seen = set()
+    readouts = []
+    for visit, (top, candidates) in zip(VISITS, per_visit):
+        tokens = []
+        selected_ids = set()
+        for token_id in chain(top.tolist(), candidates.tolist()):
+            if token_id in selected_ids:
+                continue
+            token = questions.token_strings(tokenizer, [token_id])[0]
+            if token.strip().casefold() in seen:
+                continue
+            tokens.append(token)
+            selected_ids.add(token_id)
+            if len(tokens) == TOP:
+                break
+        seen.update(token.strip().casefold() for token in tokens)
+        readouts.append({"layer": visit, "tokens": tokens})
+    return readouts
+
+
 nnsight.register(lenses)  # the lens functions run on NDIF, so they are shipped with each request
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 vocabulary_size = len(tokenizer)
@@ -68,8 +90,7 @@ for start in range(0, len(items), QUESTIONS_PER_REQUEST):
     batch = items[start : start + QUESTIONS_PER_REQUEST]
     inputs = [(torch.tensor([item.ids]), item.position) for item in batch]
 
-    # One request: everything in this block runs on NDIF, one forward pass per question. Only
-    # the ten best token ids per visit come back.
+    # One request runs one forward pass per question and saves only token IDs.
     for attempt in range(1, 4):
         best = []
         try:
@@ -82,7 +103,7 @@ for start in range(0, len(items), QUESTIONS_PER_REQUEST):
                                 h = lenses.layers(model)[layer].input[0, position]
                                 scores = lenses.logit_lens(model, h).float()[:vocabulary_size]
                                 scores.index_fill_(0, excluded_ids.to(scores.device), float("-inf"))
-                                per_visit.append(scores.topk(TOP).indices.cpu())
+                                per_visit.append((scores.topk(TOP).indices.cpu(), scores.topk(CANDIDATES).indices.cpu()))
                     best.append(per_visit)
                 nnsight.save(best)
         except (RemoteError, HTTPError, WebSocketException, OSError) as error:
@@ -95,7 +116,7 @@ for start in range(0, len(items), QUESTIONS_PER_REQUEST):
             break
 
     for item, per_visit in zip(batch, best):
-        readouts[item.id] = [{"layer": visit, "tokens": questions.token_strings(tokenizer, token_ids.tolist())} for visit, token_ids in zip(VISITS, per_visit)]
+        readouts[item.id] = deduplicated_readouts(tokenizer, per_visit)
     print(f"{questions.DATASET}: read {min(start + QUESTIONS_PER_REQUEST, len(items))} of {len(items)} questions", flush=True)
 
 questions.write(items, readouts)
