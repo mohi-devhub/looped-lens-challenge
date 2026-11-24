@@ -1,4 +1,4 @@
-"""The starter submission: read one dataset of questions with a logit lens, on NDIF.
+"""Read one dataset with a tuned lens at the starter visits on NDIF.
 
 The leaderboard starts this file once per dataset, with these environment variables set:
 
@@ -6,19 +6,18 @@ The leaderboard starts this file once per dataset, with these environment variab
     DATASET_PATH   a directory holding questions.jsonl, the questions to read (see questions.py)
     OUTPUT_DIR     where readouts.jsonl goes
     MODEL_ID       the model being read
-    NDIF_API_KEY, NDIF_HOST, HF_TOKEN   your credentials; nnsight and huggingface_hub read them
+    NDIF_API_KEY, NDIF_HOST   used by nnsight for remote execution
 
-For each question the lens reads the model at one token position, at up to ten layer visits of
-its choosing, and reports the ten tokens it finds most likely at each. To submit your own lens:
-write a function that turns the state entering a layer visit into what your lens says about it
-(lenses.py), call it in the trace where ``lenses.logit_lens`` is called, and choose the visits
-it reads.
+At each visit, translate the state at the supplied read position, project it through the
+model's final norm and output head, and report the ten highest-scoring eligible tokens.
 """
 
+import json
 import os
 import string
 import time
 import unicodedata
+from pathlib import Path
 
 import nnsight
 import torch
@@ -33,9 +32,10 @@ import questions
 
 MODEL_ID = os.environ["MODEL_ID"]
 
-VISITS = [44]
+VISITS = [12, 24, 34, 35, 36, 43, 44, 45, 46, 47]
 TOP = 10  # tokens reported per visit
 QUESTIONS_PER_REQUEST = 25  # one NDIF request runs this many forward passes
+WEIGHTS = json.loads(Path(__file__).with_name("tuned-weights.json").read_text())
 
 assert VISITS == sorted(set(VISITS)) and len(VISITS) <= questions.MAX_LAYERS, VISITS
 
@@ -60,7 +60,7 @@ excluded_ids = excluded_token_ids(tokenizer)
 items = questions.load(tokenizer)
 model = TransformersModel(MODEL_ID)
 # Each visit as (layer, which of that layer's runs): what the trace below asks NDIF for.
-addresses = [lenses.visit_address(model.config.text_config, visit) for visit in VISITS]
+addresses = [(visit, *lenses.visit_address(model.config.text_config, visit)) for visit in VISITS]
 
 readouts = {}
 for start in range(0, len(items), QUESTIONS_PER_REQUEST):
@@ -73,13 +73,17 @@ for start in range(0, len(items), QUESTIONS_PER_REQUEST):
         best = []
         try:
             with model.session(remote=True):
+                weights = lenses.fetch(WEIGHTS["repository"], WEIGHTS["filename"],
+                                       revision=WEIGHTS["revision"])
+                translators = {visit: (weights[f"{visit}.down"], weights[f"{visit}.up"], weights[f"{visit}.bias"])
+                               for visit, _, _ in addresses}
                 for ids, position in inputs:
                     with model.trace({"input_ids": ids, "attention_mask": torch.ones_like(ids)}) as tracer:
                         per_visit = []
-                        for layer, run in addresses:
+                        for visit, layer, run in addresses:
                             for _ in tracer.iter[run]:
                                 h = lenses.layers(model)[layer].input[0, position]
-                                scores = lenses.logit_lens(model, h).float()[:vocabulary_size]
+                                scores = lenses.tuned_logit_lens(model, h, translators, visit).float()[:vocabulary_size]
                                 scores.index_fill_(0, excluded_ids.to(scores.device), float("-inf"))
                                 per_visit.append(scores.topk(TOP).indices.cpu())
                     best.append(per_visit)

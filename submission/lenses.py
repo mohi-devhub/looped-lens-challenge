@@ -37,21 +37,23 @@ def logit_lens(model, h):
     return model.lm_head(model.model.language_model.norm(h))
 
 
-def fetch(repository: str, filename: str, token: str | None = None) -> dict:
+def tuned_logit_lens(model, h, translators, visit):
+    down, up, bias = (tensor.to(h) for tensor in translators[visit])
+    translators[visit] = (down, up, bias)
+    translated = h + (h @ down) @ up + bias
+    return logit_lens(model, translated)
+
+
+def fetch(repository: str, filename: str, *, revision: str) -> dict:
     """A lens's published weights, downloaded by NDIF itself: a dict of tensors.
 
-    The starter lens has no weights and does not call this. A lens that does publishes them to
-    the Hugging Face Hub as a safetensors file and calls this at the top of the session, before
-    any trace, so that they are fetched once per request and never travel in it. The file is read
-    straight into memory and nothing is left on NDIF's disk. NDIF has no Hugging Face token of
-    its own, so a private repository needs yours passed as ``token``.
+    The entry calls this at the start of the session so the public weights are fetched once
+    per request. The file is read into memory from a pinned Hugging Face revision.
     """
     import urllib.request
 
     import safetensors.torch
 
-    request = urllib.request.Request(f"https://huggingface.co/{repository}/resolve/main/{filename}")
-    if token:
-        request.add_header("Authorization", f"Bearer {token}")
+    request = urllib.request.Request(f"https://huggingface.co/{repository}/resolve/{revision}/{filename}")
     with urllib.request.urlopen(request, timeout=600) as response:
         return safetensors.torch.load(response.read())
