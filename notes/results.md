@@ -1,5 +1,16 @@
 # Lens results
 
+## Leaderboard history
+
+| Entry | Pass rate | Change and takeaway |
+| --- | ---: | --- |
+| Starter | 0.6619 | The plain logit lens used ten visits at P0 and set the reference score. |
+| v0.1 | 0.6411 | Keeping only visits 43–47 with token filtering and retries cost 2.08 leaderboard points despite tying the starter in the dev sweep. |
+| v0.2a | 0.6096 | Visit 44 alone led the local comparison and scored lowest on the leaderboard, exposing the dev-set mismatch. |
+| v0.5 | 0.6800 | The plain logit lens kept all ten starter visits and added token filtering and retries, producing the best recorded score, 1.81 percentage points above the starter. |
+
+## Local run index
+
 | Variant | Visits | Proxy (a/b/c held-out) | Practice exact | s/question | Size |
 | --- | --- | --- | --- | --- | --- |
 | Starter logit lens | 12, 24, 34, 35, 36, 43, 44, 45, 46, 47 | — | 0.6000 (6/10) | 4.16 (wall time) | 9,404 bytes of source |
