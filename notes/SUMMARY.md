@@ -85,3 +85,18 @@ base norm and output head, and the summaries were verified by checksum.
   answer-imminent and latent questions in raw and chat formats. Report
   the correct-token rank, wrong votes, and strict plurality passes by task
   family using the real judge. Keep the starter as the comparison point.
+
+## Next ideas
+
+1. **Supervised intermediate-token lens.** Train on broad synthetic data
+   with intermediate-token labels and plausible distractors. Keep the
+   training examples and templates separate from the dev sets.
+2. **Contrast between loop runs.** Adapt LoopCD to compare earlier and
+   later runs of the same layer at P0. Layer 12 provides visits 12, 24,
+   and 36 as an initial set of pairs. Measure the change in intermediate
+   rank and judged votes. [LoopCD paper](https://arxiv.org/abs/2610.02185)
+3. **Judge-calibrated dev set.** Use only public guidance from
+   `final-evals/` to author prompts, intermediates, and distractors. Check
+   candidate tokens with the official judge and test whether the dev set
+   reproduces the recorded ordering of the known entries.
+   [Public evaluation guide](../final-evals/README.md) · [Judge prompts](../final-evals/judge_prompts/README.md)
