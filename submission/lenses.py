@@ -35,25 +35,3 @@ def logit_lens(model, h):
     The model also soft-caps its logits, which does not change their order, so it is left out.
     """
     return model.lm_head(model.model.language_model.norm(h))
-
-
-def tuned_logit_lens(model, h, translators, visit):
-    down, up, bias = (tensor.to(h) for tensor in translators[visit])
-    translators[visit] = (down, up, bias)
-    translated = h + (h @ down) @ up + bias
-    return logit_lens(model, translated)
-
-
-def fetch(repository: str, filename: str, *, revision: str) -> dict:
-    """A lens's published weights, downloaded by NDIF itself: a dict of tensors.
-
-    The entry calls this at the start of the session so the public weights are fetched once
-    per request. The file is read into memory from a pinned Hugging Face revision.
-    """
-    import urllib.request
-
-    import safetensors.torch
-
-    request = urllib.request.Request(f"https://huggingface.co/{repository}/resolve/{revision}/{filename}")
-    with urllib.request.urlopen(request, timeout=600) as response:
-        return safetensors.torch.load(response.read())
